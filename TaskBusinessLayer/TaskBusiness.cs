@@ -2,86 +2,75 @@
 using System.Collections.Generic;
 using System.Linq;
 using TaskDataAccessLayer;
+using AutoMapper;
 
 namespace TaskBusinessLayer
 {
     public class TaskBusiness : IDisposable
     {
         private readonly TaskManagementDatabaseEntities dbcontext;
-        public bool status;
+        private readonly IMapper mapper;
+
         public TaskBusiness(TaskManagementDatabaseEntities dbcontext)
         {
             this.dbcontext = dbcontext ?? throw new ArgumentNullException(nameof(dbcontext));
-            status = false;
+
+            // AutoMapper Configuration
+            var config = new MapperConfiguration(cfg =>
+            {
+                cfg.CreateMap<Task, TaskDTO>();
+                cfg.CreateMap<Status, StatusDTO>();
+                cfg.CreateMap<UserInfo, UserInfoDTO>();
+                cfg.CreateMap<UserTaskDTO, TaskDTO>();
+                cfg.CreateMap<TaskDTO, Task>();
+
+            });
+
+            mapper = config.CreateMapper();
         }
 
-        public List<Task> GetAllTasks()
+        public List<TaskDTO> GetAllTasks()
         {
-            return dbcontext.Tasks.ToList();
+            var tasks = dbcontext.Tasks.ToList();
+            return mapper.Map<List<TaskDTO>>(tasks);
         }
-
         public TaskDTO GetTaskById(int taskid)
         {
-            try
-            {
-                var task = dbcontext.Tasks.Where(t => t.Id == taskid).SingleOrDefault();
-
-                if (task == null)
-                {
-                    return null;
-                }
-
-                var taskdata = new TaskDTO
-                {
-                    Id = task.Id,
-                    Title = task.Title,
-                    Description = task.Description,
-                    DueDate = task.DueDate,
-                    StatusId = task.StatusId,
-                    UserId = task.UserId
-                };
-                return taskdata;
-            }
-            catch (Exception)
-            {
-                return null;
-            }
+            var task = dbcontext.Tasks.SingleOrDefault(t => t.Id == taskid);
+            return mapper.Map<TaskDTO>(task);
         }
+
         public bool AddTask(TaskDTO task)
         {
+            bool status = false;
             if (task == null)
             {
                 throw new ArgumentNullException(nameof(task));
             }
-            dbcontext.sp_InsertTask(
-                task.Title,
-                task.Description,
-                task.DueDate,
-                task.StatusId,
-                task.UserId
-            );
-            dbcontext.SaveChanges();
-            status = true;
-            return status;
+            try
+            {
+                dbcontext.sp_InsertTask(task.Title,task.Description,task.DueDate,task.StatusId,task.UserId);
+                dbcontext.SaveChanges();
+                status = true;
+                return status;
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to add the task. Error: {ex.Message}", ex);
+            }
         }
 
 
         public bool UpdateTask(TaskDTO task)
         {
+            bool status = false;
             if (task == null)
             {
                 throw new ArgumentNullException(nameof(task));
             }
             try
             {
-                dbcontext.sp_UpdateTask(
-                    task.Id,
-                    task.Title,
-                    task.Description,
-                    task.DueDate,
-                    task.StatusId,
-                    task.UserId
-                );
+                dbcontext.sp_UpdateTask(task.Id,task.Title,task.Description,task.DueDate,task.StatusId,task.UserId);
                 status = true;
                 return status;
             }
@@ -90,23 +79,28 @@ namespace TaskBusinessLayer
                 throw new InvalidOperationException($"Failed to update Task with ID {task.Id}. Error: {ex.Message}", ex);
             }
         }
+
+
+
         public bool DeleteTask(int taskid)
         {
-            var task = dbcontext.Tasks.Where(t => t.Id == taskid).SingleOrDefault();
-
+            bool status = false;
+            var task = dbcontext.Tasks.SingleOrDefault(t => t.Id == taskid);
             if (task != null)
             {
-                dbcontext.sp_DeleteTaskById(taskid);
+                dbcontext.Tasks.Remove(task);
                 dbcontext.SaveChanges();
                 status = true;
-                return status;
             }
             return status;
         }
-        public List<Status> GetAllStatuses()
+
+        public List<StatusDTO> GetAllStatuses()
         {
-            return dbcontext.Status.ToList();
+            var statuses = dbcontext.Status.ToList();
+            return mapper.Map<List<StatusDTO>>(statuses);
         }
+
         public void Dispose()
         {
             dbcontext.Dispose();

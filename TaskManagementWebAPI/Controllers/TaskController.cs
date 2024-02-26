@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Net;
 using System.Web.Http;
+using AutoMapper;
 using TaskBusinessLayer;
 using TaskManagementWebAPI.Models;
 
@@ -10,10 +11,19 @@ namespace TaskManagementWebAPI.Controllers
     public class TaskController : ApiController
     {
         private readonly TaskBusiness tb;
+        private readonly IMapper mapper;
         public TaskController()
-        { 
+        {
             var dbcontext = new TaskDataAccessLayer.TaskManagementDatabaseEntities();
             this.tb = new TaskBusiness(dbcontext) ?? throw new ArgumentNullException(nameof(tb));
+
+            // AutoMapper Configuration
+            var config = new MapperConfiguration(cfg =>
+            {
+                cfg.CreateMap<TaskDTO, TaskModel>();
+                cfg.CreateMap<TaskModel, TaskDTO>();
+            });
+            mapper = config.CreateMapper();
         }
 
         // GET api/task
@@ -21,17 +31,7 @@ namespace TaskManagementWebAPI.Controllers
         [Route("api/task")]
         public IHttpActionResult GetTasks()
         {
-            var tasks = tb.GetAllTasks().Select(task => new TaskModel
-            {
-                Id = task.Id,
-                Title = task.Title,
-                Description = task.Description,
-                DueDate = task.DueDate,
-                StatusId = task.StatusId,
-                UserId = task.UserId
-            })
-            .ToList();
-
+            var tasks = tb.GetAllTasks().Select(task => mapper.Map<TaskModel>(task)).ToList();
             return Ok(tasks);
         }
 
@@ -45,15 +45,8 @@ namespace TaskManagementWebAPI.Controllers
             {
                 return BadRequest("Given ID data not exist");
             }
-            var taskModel = new TaskModel
-            {
-                Id = task.Id,
-                Title = task.Title,
-                Description = task.Description,
-                DueDate = task.DueDate,
-                StatusId = task.StatusId,
-                UserId = task.UserId
-            };
+
+            var taskModel = mapper.Map<TaskModel>(task);
             return Ok(taskModel);
         }
 
@@ -65,43 +58,33 @@ namespace TaskManagementWebAPI.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var task = new TaskDTO
-            {
-                Title = taskModel.Title,
-                Description = taskModel.Description,
-                DueDate = taskModel.DueDate,
-                StatusId = taskModel.StatusId,
-                UserId = taskModel.UserId
-            };
-            bool status = tb.AddTask(task);
+            var taskDTO = mapper.Map<TaskDTO>(taskModel);
+            bool status = tb.AddTask(taskDTO);
+
             if (status)
                 return Content(HttpStatusCode.OK, "Task added successfully!");
             else
                 return BadRequest("Failed to add the task. Please check your input or try again later.");
         }
 
-
         // PUT api/task/1
         [HttpPut]
         [Route("api/task/{id}")]
-        public IHttpActionResult UpdateTask(int id, TaskModel taskmodel)
+        public IHttpActionResult UpdateTask(int id, TaskModel model)
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var task = tb.GetTaskById(id);
-            if (task == null)
+            var existingTask = tb.GetTaskById(id);
+            if (existingTask == null)
             {
                 return BadRequest("Given ID data not exist to update");
             }
-            task.Id = id;
-            task.Title = taskmodel.Title;
-            task.Description = taskmodel.Description;
-            task.DueDate = taskmodel.DueDate;
-            task.StatusId = taskmodel.StatusId;
-            task.UserId = taskmodel.UserId;
+            var updatedtask = mapper.Map<TaskDTO>(model);
+            updatedtask.Id = id;
 
-           bool status= tb.UpdateTask(task);
+            bool status = tb.UpdateTask(updatedtask);
+
             if (status)
                 return Content(HttpStatusCode.OK, "Task Updated successfully!");
             else
@@ -113,19 +96,21 @@ namespace TaskManagementWebAPI.Controllers
         [Route("api/task/{id}")]
         public IHttpActionResult DeleteTask(int id)
         {
-            var task = tb.GetTaskById(id);
+            var existingTask = tb.GetTaskById(id);
 
-            if (task == null)
+            if (existingTask == null)
             {
                 return BadRequest("Given ID data not exist to update");
             }
 
-            bool status=tb.DeleteTask(id);
-            if(status)
+            bool status = tb.DeleteTask(id);
+
+            if (status)
                 return Content(HttpStatusCode.OK, "Task Deleted successfully!");
             else
                 return BadRequest("Failed to delete the task. Please check your input or try again later.");
         }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)

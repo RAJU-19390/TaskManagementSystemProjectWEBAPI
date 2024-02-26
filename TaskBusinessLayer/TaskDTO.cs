@@ -16,9 +16,6 @@ namespace TaskBusinessLayer
         public Nullable<int> StatusId { get; set; }
         public int UserId { get; set; }
         public virtual Status Status { get; set; }
-        public virtual UserInfo UserInfo
-        {
-            get; set;
-        }
+        public virtual UserInfo UserInfo { get; set;}
     }
 }

@@ -4,34 +4,48 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using TaskDataAccessLayer;
+using AutoMapper;
 
 namespace TaskBusinessLayer
 {
     public class UserBusiness
     {
         private readonly TaskManagementDatabaseEntities dbcontext;
-        public bool status;
+        private readonly IMapper mapper;
+
         public UserBusiness(TaskManagementDatabaseEntities dbcontext)
         {
             this.dbcontext = dbcontext ?? throw new ArgumentNullException(nameof(dbcontext));
-            status = false;
+            // AutoMapper Configuration
+            var config = new MapperConfiguration(cfg =>
+            {
+                cfg.CreateMap<UserInfo, UserInfoDTO>();
+                cfg.CreateMap<UserInfoDTO, UserInfo>();
+                cfg.CreateMap<UserTaskDTO, TaskDTO>();
+            });
+
+            mapper = config.CreateMapper();
         }
 
-        public List<UserInfo> GetAllUserInfos()
+        public List<UserInfoDTO> GetAllUserInfos()
         {
-            return dbcontext.UserInfoes.ToList();
+            var users = dbcontext.UserInfoes.ToList();
+            return mapper.Map<List<UserInfoDTO>>(users);
         }
 
-        public UserInfo GetUserById(int userid)
+        public UserInfoDTO GetUserById(int userid)
         {
-            return dbcontext.UserInfoes.Find(userid);
+            var user = dbcontext.UserInfoes.Find(userid);
+            return mapper.Map<UserInfoDTO>(user);
         }
-        public List<UserInfo> GetAllUserInfoByName(string name)
+
+        public List<UserInfoDTO> GetAllUserInfoByName(string name)
         {
             var userList = dbcontext.UserInfoes.Where(u => u.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).ToList();
 
-            return userList;
+            return mapper.Map<List<UserInfoDTO>>(userList);
         }
+
         public IEnumerable<UserTaskDTO> GetUserTasks(int userId)
         {
             var userTasks = from t in dbcontext.Tasks
@@ -47,78 +61,80 @@ namespace TaskBusinessLayer
                                 DueDate = t.DueDate,
                                 StatusMode = s.Mode
                             };
-            return userTasks.ToList();
+            return mapper.Map<List<UserTaskDTO>>(userTasks.ToList());
         }
 
         public static string HashPassword(string password)
         {
-            using (SHA512 sha256Hash = SHA512.Create()) // using Create() method of SHA256 class to create an instance of the class.
+            using (SHA512 sha512Hash = SHA512.Create())
             {
-                byte[] bytes = sha256Hash.ComputeHash(Encoding.UTF8.GetBytes(password)); // Computing hash using UTF8 encoding 
-                // Convert byte array to a string
-                StringBuilder builder = new StringBuilder(); // using "StringBuilder" class, to build strings from the bytes obtained above.
+                byte[] bytes = sha512Hash.ComputeHash(Encoding.UTF8.GetBytes(password));
+                StringBuilder builder = new StringBuilder();
                 for (int i = 0; i < bytes.Length; i++)
                 {
-                    builder.Append(bytes[i].ToString("x2")); // Converting byte to String using "x2" fomrat specifier.
+                    builder.Append(bytes[i].ToString("x2"));
                 }
                 return builder.ToString();
             }
         }
-
         public bool AddUserInfo(UserInfoDTO user)
         {
+            bool status = false;
             if (user == null)
             {
                 throw new ArgumentNullException(nameof(user));
             }
-            string encryptedpassword = HashPassword(user.Password);
-            dbcontext.sp_InsertUserInfo(
-                user.Name,
-                user.Email,
-                encryptedpassword,
-                user.Is_Admin
-            );
-            dbcontext.SaveChanges();
-            status = true;
-            return status;
+            string encryptedpwd = HashPassword(user.Password);
+            try
+            {
+                dbcontext.sp_InsertUserInfo( user.Name,user.Email,encryptedpwd,user.Is_Admin);
+                dbcontext.SaveChanges();
+                status = true;
+                return status;
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to add the user. Error: {ex.Message}", ex);
+            }
         }
-
         public bool UpdateUserInfo(UserInfoDTO user)
         {
+            bool status = false;
             if (user == null)
             {
                 throw new ArgumentNullException(nameof(user));
             }
-            var existinguser = dbcontext.UserInfoes.Where(t => t.Id == user.Id).SingleOrDefault();
-
-            if (existinguser == null)
+            try
             {
-                throw new ArgumentException($"User with ID {user.Id} not found");
+                var existinguser = dbcontext.UserInfoes.Find(user.Id);
+                if (existinguser == null)
+                {
+                    throw new ArgumentException($"User with ID {user.Id} not found");
+                }
+                string encryptedpwd = HashPassword(user.Password);
+               
+                if (existinguser.Password == encryptedpwd|| existinguser.Password!=encryptedpwd)
+                {
+                    dbcontext.sp_UpdateUserInfo(user.Id, user.Name, user.Email, encryptedpwd,user.Is_Admin);
+                }
+                dbcontext.SaveChanges();
+                status = true;
+                return status;
             }
-            existinguser.Id = user.Id;
-            existinguser.Name = user.Name;
-            existinguser.Email = user.Email;
-            existinguser.Is_Admin = user.Is_Admin;
-            string encryptedpwd = HashPassword(user.Password);
-            if (existinguser.Password != encryptedpwd)
+            catch (Exception ex)
             {
-                dbcontext.sp_UpdateUserInfo(existinguser.Id, existinguser.Name, existinguser.Email, encryptedpwd, existinguser.Is_Admin);
+                throw new InvalidOperationException($"Failed to update user with ID {user.Id}. Error: {ex.Message}", ex);
             }
-            dbcontext.SaveChanges();
-            return true;
         }
-
-
         public bool DeleteUserInfo(int userid)
         {
+            bool status = false;
             var user = dbcontext.UserInfoes.Find(userid);
-
             if (user != null)
             {
                 dbcontext.sp_DeleteUserInfoById(userid);
                 dbcontext.SaveChanges();
                 status = true;
-                return status;
             }
             return status;
         }

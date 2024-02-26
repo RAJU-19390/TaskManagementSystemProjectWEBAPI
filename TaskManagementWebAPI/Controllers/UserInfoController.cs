@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Net;
 using System.Web.Http;
+using AutoMapper;
 using TaskBusinessLayer;
 using TaskManagementWebAPI.Models;
 
@@ -10,11 +11,20 @@ namespace TaskMgm.Controllers
     public class UserInfoController : ApiController
     {
         private readonly UserBusiness ub;
-
+        private readonly IMapper mapper;
         public UserInfoController()
         {
-             var dbcontext = new TaskDataAccessLayer.TaskManagementDatabaseEntities();
+            var dbcontext = new TaskDataAccessLayer.TaskManagementDatabaseEntities();
             this.ub = new UserBusiness(dbcontext) ?? throw new ArgumentNullException(nameof(ub));
+
+            // AutoMapper Configuration
+            var config = new MapperConfiguration(cfg =>
+            {
+                cfg.CreateMap<UserInfoDTO, UserInfoModel>();
+                cfg.CreateMap<UserInfoModel, UserInfoDTO>();
+            });
+
+            mapper = config.CreateMapper();
         }
 
         // GET api/UserInfo
@@ -22,17 +32,8 @@ namespace TaskMgm.Controllers
         [Route("api/UserInfo")]
         public IHttpActionResult GetAllUsers()
         {
-            var allusers = ub.GetAllUserInfos();
-            var usermodels = allusers.Select(u => new UserInfoModel
-            {
-                Id = u.Id,
-                Name = u.Name,
-                Email = u.Email,
-                Password = u.Password,
-                Is_Admin = u.Is_Admin
-            }).ToList();
-
-            return Ok(usermodels);
+            var allusers = ub.GetAllUserInfos().Select(user => mapper.Map<UserInfoModel>(user)).ToList();
+            return Ok(allusers);
         }
 
         // GET api/UserInfo/5
@@ -41,21 +42,11 @@ namespace TaskMgm.Controllers
         public IHttpActionResult GetUserById(int id)
         {
             var user = ub.GetUserById(id);
-
             if (user == null)
             {
-                return NotFound();
+                return BadRequest("Given ID data not exist");
             }
-
-            var userModel = new UserInfoModel
-            {
-                Id = user.Id,
-                Name = user.Name,
-                Email = user.Email,
-                Password = user.Password,
-                Is_Admin = user.Is_Admin
-            };
-
+            var userModel = mapper.Map<UserInfoModel>(user);
             return Ok(userModel);
         }
 
@@ -70,14 +61,7 @@ namespace TaskMgm.Controllers
                 return BadRequest("Given Name data not exist");
             }
 
-            var usermodels = allusers.Select(u => new UserInfoModel
-            {
-                Id = u.Id,
-                Name = u.Name,
-                Email = u.Email,
-                Password = u.Password,
-                Is_Admin = u.Is_Admin
-            }).ToList();
+            var usermodels = allusers.Select(u => mapper.Map<UserInfoModel>(u)).ToList();
 
             return Ok(usermodels);
         }
@@ -105,19 +89,12 @@ namespace TaskMgm.Controllers
             {
                 return BadRequest(ModelState);
             }
-            // Encrypt the password using SHA-256
-            var user = new UserInfoDTO
-            {
-                Name = model.Name,
-                Email = model.Email,
-                Password = model.Password,
-                Is_Admin = model.Is_Admin
-            };
-            bool status =ub.AddUserInfo(user);
+            var user = mapper.Map<UserInfoDTO>(model);
+            bool status = ub.AddUserInfo(user);
             if (status)
                 return Content(HttpStatusCode.OK, "User added successfully!");
             else
-                return BadRequest("Failed to add the userx. Please check your input or try again later.");
+                return BadRequest("Failed to add the user. Please check your input or try again later.");
         }
 
         // PUT api/UserInfo/5
@@ -129,15 +106,9 @@ namespace TaskMgm.Controllers
             {
                 return BadRequest(ModelState);
             }
-            var user = new UserInfoDTO
-            {
-                Id = id,
-                Name = model.Name,
-                Email = model.Email,
-                Password = model.Password,
-                Is_Admin = model.Is_Admin
-            };
-            bool status =ub.UpdateUserInfo(user);
+            var user = mapper.Map<UserInfoDTO>(model);
+            user.Id = id;
+            bool status = ub.UpdateUserInfo(user);
             if (status)
                 return Content(HttpStatusCode.OK, "User Updated successfully!");
             else
@@ -156,7 +127,7 @@ namespace TaskMgm.Controllers
                 return BadRequest("Given ID data not exist");
             }
 
-            bool status=ub.DeleteUserInfo(id);
+            bool status = ub.DeleteUserInfo(id);
             if (status)
                 return Content(HttpStatusCode.OK, "User Deleted successfully!");
             else
