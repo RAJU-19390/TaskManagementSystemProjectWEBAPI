@@ -1,10 +1,10 @@
-﻿using System;
+﻿using AutoMapper;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using TaskDataAccessLayer;
-using AutoMapper;
 
 namespace TaskBusinessLayer
 {
@@ -38,6 +38,12 @@ namespace TaskBusinessLayer
             var user = dbcontext.UserInfoes.Find(userid);
             return mapper.Map<UserInfoDTO>(user);
         }
+        public UserInfoDTO GetUserByEmail(string email)
+        {
+            var user = dbcontext.UserInfoes.FirstOrDefault(u => u.Email.Equals(email, StringComparison.OrdinalIgnoreCase));
+            return mapper.Map<UserInfoDTO>(user);
+        }
+
 
         public List<UserInfoDTO> GetAllUserInfoByName(string name)
         {
@@ -48,23 +54,32 @@ namespace TaskBusinessLayer
 
         public IEnumerable<UserTaskDTO> GetUserTasks(int userId)
         {
-            var userTasks = from t in dbcontext.Tasks
-                            join u in dbcontext.UserInfoes on t.UserId equals u.Id
-                            join s in dbcontext.Status on t.StatusId equals s.Id
-                            where u.Id == userId
-                            select new UserTaskDTO
-                            {
-                                UserId = u.Id,
-                                UserName = u.Name,
-                                TaskId = t.Id,
-                                Description = t.Description,
-                                DueDate = t.DueDate,
-                                StatusMode = s.Mode
-                            };
-            return mapper.Map<List<UserTaskDTO>>(userTasks.ToList());
+            var userTasksGrouped = from task in dbcontext.Tasks
+                                   join user in dbcontext.UserInfoes on task.UserId equals user.Id
+                                   join status in dbcontext.Status on task.StatusId equals status.Id
+                                   where user.Id == userId
+                                   group new { task, user, status } by new { user.Id, user.Name } into groupbytask
+                                   select new UserTaskDTO
+                                   {
+                                       UserId = groupbytask.Key.Id,
+                                       UserName = groupbytask.Key.Name,
+                                       TaskData = groupbytask.Select(required => new RequiredUserTaskDTO
+                                       {
+                                           Id = required.task.Id,
+                                           Title = required.task.Title,
+                                           Description = required.task.Description,
+                                           DueDate = required.task.DueDate,
+                                           Status = new List<StatusDTO>
+                                             { new StatusDTO
+                                                {  Mode = required.status.Mode }
+                                             }
+                                       }).ToList()
+                                   };
+
+            return mapper.Map<List<UserTaskDTO>>(userTasksGrouped.ToList());
         }
 
-        public static string HashPassword(string password)
+        public string HashPassword(string password)
         {
             using (SHA512 sha512Hash = SHA512.Create())
             {
@@ -79,7 +94,6 @@ namespace TaskBusinessLayer
         }
         public bool AddUserInfo(UserInfoDTO user)
         {
-            bool status = false;
             if (user == null)
             {
                 throw new ArgumentNullException(nameof(user));
@@ -87,19 +101,17 @@ namespace TaskBusinessLayer
             string encryptedpwd = HashPassword(user.Password);
             try
             {
-                dbcontext.sp_InsertUserInfo( user.Name,user.Email,encryptedpwd,user.Is_Admin);
+                dbcontext.sp_InsertUserInfo(user.Name, user.Email, encryptedpwd, user.Is_Admin);
                 dbcontext.SaveChanges();
-                status = true;
-                return status;
+                return true;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                throw new InvalidOperationException($"Failed to add the user. Error: {ex.Message}", ex);
+                return false;
             }
         }
         public bool UpdateUserInfo(UserInfoDTO user)
         {
-            bool status = false;
             if (user == null)
             {
                 throw new ArgumentNullException(nameof(user));
@@ -112,31 +124,49 @@ namespace TaskBusinessLayer
                     throw new ArgumentException($"User with ID {user.Id} not found");
                 }
                 string encryptedpwd = HashPassword(user.Password);
-               
-                if (existinguser.Password == encryptedpwd|| existinguser.Password!=encryptedpwd)
-                {
-                    dbcontext.sp_UpdateUserInfo(user.Id, user.Name, user.Email, encryptedpwd,user.Is_Admin);
-                }
+
+                dbcontext.sp_UpdateUserInfo(user.Id, user.Name, user.Email, encryptedpwd, user.Is_Admin);
                 dbcontext.SaveChanges();
-                status = true;
-                return status;
+                return true;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                throw new InvalidOperationException($"Failed to update user with ID {user.Id}. Error: {ex.Message}", ex);
+                return false;
+            }
+        }
+
+        public bool UpdatePassword(UpdatePwdDTO updatedpwd)
+        {
+            var user = dbcontext.UserInfoes.FirstOrDefault(u => u.Email.Equals(updatedpwd.Email, StringComparison.OrdinalIgnoreCase));
+            string hashedpwd = HashPassword(updatedpwd.OldPassword);//Existing password is hashed to check
+            try
+            {
+                if (user.Password == hashedpwd.Substring(0, 10))//checking Password stored pwd and entered pwd
+                {
+                    user.Password = HashPassword(updatedpwd.NewPassword);  //new password is hashed here
+                    dbcontext.sp_UpdateUserInfo(user.Id, user.Name, user.Email, user.Password, user.Is_Admin);
+                    return true;
+                }
+                return false;
+            }
+            catch (Exception)
+            {
+                return false;
             }
         }
         public bool DeleteUserInfo(int userid)
         {
-            bool status = false;
-            var user = dbcontext.UserInfoes.Find(userid);
-            if (user != null)
+            try
             {
+                var user = dbcontext.UserInfoes.Find(userid);
                 dbcontext.sp_DeleteUserInfoById(userid);
                 dbcontext.SaveChanges();
-                status = true;
+                return true;
             }
-            return status;
+            catch (Exception)
+            {
+                return false;
+            }
         }
     }
 }

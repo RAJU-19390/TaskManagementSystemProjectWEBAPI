@@ -1,4 +1,6 @@
-﻿namespace TaskBusinessLayer
+﻿
+using System.ComponentModel.DataAnnotations;
+namespace TaskBusinessLayer
 {
     public class UserInfoDTO
     {

@@ -22,6 +22,8 @@ namespace TaskMgm.Controllers
             {
                 cfg.CreateMap<UserInfoDTO, UserInfoModel>();
                 cfg.CreateMap<UserInfoModel, UserInfoDTO>();
+                cfg.CreateMap<UpdatePwdDTO, UpdatePwdModel>();
+                cfg.CreateMap<UpdatePwdModel, UpdatePwdDTO>();
             });
 
             mapper = config.CreateMapper();
@@ -33,7 +35,10 @@ namespace TaskMgm.Controllers
         public IHttpActionResult GetAllUsers()
         {
             var allusers = ub.GetAllUserInfos().Select(user => mapper.Map<UserInfoModel>(user)).ToList();
-            return Ok(allusers);
+            if (allusers == null)
+                return BadRequest("Users data not exist");
+            else
+                return Ok(allusers);
         }
 
         // GET api/UserInfo/5
@@ -107,7 +112,6 @@ namespace TaskMgm.Controllers
                 return BadRequest(ModelState);
             }
             var user = mapper.Map<UserInfoDTO>(model);
-            user.Id = id;
             bool status = ub.UpdateUserInfo(user);
             if (status)
                 return Content(HttpStatusCode.OK, "User Updated successfully!");
@@ -131,7 +135,38 @@ namespace TaskMgm.Controllers
             if (status)
                 return Content(HttpStatusCode.OK, "User Deleted successfully!");
             else
-                return BadRequest("Failed to delete the user. Please check your input or try again later.");
+                return BadRequest("Getting Error While deleting user account");
         }
+
+        [HttpPut]
+        [Route("api/UserInfo/UpdatePassword")]
+        public IHttpActionResult UpdatePassword([FromBody] UpdatePwdModel updatePwdModel)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var updatedPwdDTO = mapper.Map<UpdatePwdDTO>(updatePwdModel);
+
+            try
+            {
+                var user = ub.GetUserByEmail(updatedPwdDTO.Email);
+                if (user == null)
+                {
+                    return BadRequest("User not found for the given email.");
+                }
+                bool status=ub.UpdatePassword(updatedPwdDTO);
+                if (status)
+                    return Ok("Password updated successfully!");
+                else
+                    return BadRequest("Current Password is not Correct.Recheck Once Again...");
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
+        }
+
     }
 }

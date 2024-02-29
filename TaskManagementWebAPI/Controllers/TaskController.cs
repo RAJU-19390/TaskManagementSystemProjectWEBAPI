@@ -32,6 +32,9 @@ namespace TaskManagementWebAPI.Controllers
         public IHttpActionResult GetTasks()
         {
             var tasks = tb.GetAllTasks().Select(task => mapper.Map<TaskModel>(task)).ToList();
+            if(tasks==null)
+                return BadRequest("Task Data not exist");
+            else
             return Ok(tasks);
         }
 
@@ -53,13 +56,13 @@ namespace TaskManagementWebAPI.Controllers
         // POST api/task
         [HttpPost]
         [Route("api/task")]
-        public IHttpActionResult AddTask(TaskModel taskModel)
+        public IHttpActionResult AddTask(TaskModel model)
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var taskDTO = mapper.Map<TaskDTO>(taskModel);
-            bool status = tb.AddTask(taskDTO);
+            var task = mapper.Map<TaskDTO>(model);
+            bool status = tb.AddTask(task);
 
             if (status)
                 return Content(HttpStatusCode.OK, "Task added successfully!");
@@ -81,7 +84,6 @@ namespace TaskManagementWebAPI.Controllers
                 return BadRequest("Given ID data not exist to update");
             }
             var updatedtask = mapper.Map<TaskDTO>(model);
-            updatedtask.Id = id;
 
             bool status = tb.UpdateTask(updatedtask);
 

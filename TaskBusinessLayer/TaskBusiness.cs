@@ -42,7 +42,6 @@ namespace TaskBusinessLayer
 
         public bool AddTask(TaskDTO task)
         {
-            bool status = false;
             if (task == null)
             {
                 throw new ArgumentNullException(nameof(task));
@@ -51,32 +50,25 @@ namespace TaskBusinessLayer
             {
                 dbcontext.sp_InsertTask(task.Title,task.Description,task.DueDate,task.StatusId,task.UserId);
                 dbcontext.SaveChanges();
-                status = true;
-                return status;
+                return true;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                throw new InvalidOperationException($"Failed to add the task. Error: {ex.Message}", ex);
+                return false;
             }
         }
 
 
         public bool UpdateTask(TaskDTO task)
         {
-            bool status = false;
-            if (task == null)
-            {
-                throw new ArgumentNullException(nameof(task));
-            }
             try
             {
-                dbcontext.sp_UpdateTask(task.Id,task.Title,task.Description,task.DueDate,task.StatusId,task.UserId);
-                status = true;
-                return status;
+                dbcontext.sp_UpdateTask(task.Id, task.Title, task.Description, task.DueDate, task.StatusId, task.UserId);
+                return true;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                throw new InvalidOperationException($"Failed to update Task with ID {task.Id}. Error: {ex.Message}", ex);
+                return false;
             }
         }
 
@@ -84,21 +76,17 @@ namespace TaskBusinessLayer
 
         public bool DeleteTask(int taskid)
         {
-            bool status = false;
-            var task = dbcontext.Tasks.SingleOrDefault(t => t.Id == taskid);
-            if (task != null)
+            try
             {
+                var task = dbcontext.Tasks.SingleOrDefault(t => t.Id == taskid);
                 dbcontext.Tasks.Remove(task);
                 dbcontext.SaveChanges();
-                status = true;
+                return true;
             }
-            return status;
-        }
-
-        public List<StatusDTO> GetAllStatuses()
-        {
-            var statuses = dbcontext.Status.ToList();
-            return mapper.Map<List<StatusDTO>>(statuses);
+            catch(Exception)
+            {
+                return false;
+            }
         }
 
         public void Dispose()
